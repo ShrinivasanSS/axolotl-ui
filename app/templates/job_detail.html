@@ -1,0 +1,54 @@
+{% extends "base.html" %}
+
+{% block title %}Run {{ job.display_name }} · Fine-Tuning{% endblock %}
+
+{% block content %}
+<section class="job-detail" data-job-id="{{ job.id }}">
+  <div class="panel job-summary">
+    <header>
+      <h2>{{ job.display_name }}</h2>
+      <span class="status status-{{ job.status.value }}">{{ job.status.value|capitalize }}</span>
+    </header>
+    <dl>
+      <div><dt>Base model</dt><dd>{{ job.base_model }}</dd></div>
+      <div><dt>Training method</dt><dd>{{ job.training_method|upper }}</dd></div>
+      <div><dt>Created</dt><dd>{{ job.created_at.strftime('%Y-%m-%d %H:%M:%S') }}</dd></div>
+      <div><dt>Started</dt><dd>{{ job.started_at.strftime('%Y-%m-%d %H:%M:%S') if job.started_at else '—' }}</dd></div>
+      <div><dt>Completed</dt><dd>{{ job.completed_at.strftime('%Y-%m-%d %H:%M:%S') if job.completed_at else '—' }}</dd></div>
+      <div><dt>Dataset</dt><dd><code>{{ job.dataset_path }}</code></dd></div>
+      <div><dt>Config</dt><dd><code>{{ job.config_path }}</code></dd></div>
+      <div><dt>Command</dt><dd><code>{{ job.docker_command }}</code></dd></div>
+    </dl>
+  </div>
+
+  <div class="panel job-events">
+    <h3>Events</h3>
+    <ul id="event-list">
+      {% for event in job.events %}
+        <li><span class="timestamp">{{ event.created_at.strftime('%H:%M:%S') }}</span> {{ event.message }}</li>
+      {% endfor %}
+    </ul>
+  </div>
+
+  <div class="panel job-logs">
+    <div class="logs-header">
+      <h3>Logs</h3>
+      <button type="button" class="secondary-btn" id="refresh-logs">Refresh</button>
+    </div>
+    <pre id="job-log">{{ initial_log | e }}</pre>
+  </div>
+</section>
+{% endblock %}
+
+{% block footer_scripts %}
+<script>
+  window.addEventListener('DOMContentLoaded', () => {
+    const container = document.querySelector('.job-detail');
+    if (!container) return;
+    const jobId = container.dataset.jobId;
+    if (window.JobDetailController) {
+      new window.JobDetailController(jobId);
+    }
+  });
+</script>
+{% endblock %}

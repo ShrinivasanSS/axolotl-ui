@@ -1,0 +1,379 @@
+:root {
+  color-scheme: dark;
+  --bg: #11121a;
+  --panel: #1b1d2a;
+  --panel-border: #272a3a;
+  --accent: #6d87ff;
+  --accent-strong: #8ea5ff;
+  --text: #e5e7ff;
+  --text-dim: #99a1c2;
+  --success: #3fb68b;
+  --danger: #f87171;
+  --warning: #fbbf24;
+  --font: 'Inter', system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+body {
+  margin: 0;
+  font-family: var(--font);
+  background: var(--bg);
+  color: var(--text);
+  min-height: 100vh;
+  display: flex;
+  flex-direction: column;
+}
+
+.app-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 1.5rem 2rem;
+  border-bottom: 1px solid var(--panel-border);
+  background: #0b0c12;
+}
+
+.app-header h1 {
+  margin: 0;
+  font-size: 1.4rem;
+}
+
+.subtitle {
+  margin: 0.25rem 0 0;
+  color: var(--text-dim);
+  font-size: 0.95rem;
+}
+
+.top-links a {
+  color: var(--text-dim);
+  margin-left: 1.5rem;
+  text-decoration: none;
+  transition: color 0.2s;
+}
+
+.top-links a:hover {
+  color: var(--accent);
+}
+
+.app-main {
+  flex: 1;
+  padding: 2rem;
+}
+
+.dashboard {
+  display: grid;
+  gap: 2rem;
+  grid-template-columns: minmax(320px, 1fr) minmax(320px, 1fr);
+}
+
+.panel {
+  background: var(--panel);
+  border: 1px solid var(--panel-border);
+  border-radius: 16px;
+  padding: 1.75rem;
+  display: flex;
+  flex-direction: column;
+  gap: 1.25rem;
+  box-shadow: 0 40px 80px rgba(0, 0, 0, 0.45);
+}
+
+.panel h2, .panel h3 {
+  margin: 0;
+}
+
+.panel-description {
+  margin: 0;
+  color: var(--text-dim);
+}
+
+.field-group {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+}
+
+label {
+  font-weight: 600;
+  font-size: 0.95rem;
+}
+
+input[type="text"],
+input[type="number"],
+select,
+textarea {
+  background: #12131c;
+  border: 1px solid #2b2f40;
+  border-radius: 10px;
+  padding: 0.65rem 0.75rem;
+  color: var(--text);
+  font-size: 0.95rem;
+  transition: border 0.2s, box-shadow 0.2s;
+}
+
+input[type="file"] {
+  color: var(--text);
+}
+
+input:focus,
+select:focus,
+textarea:focus {
+  outline: none;
+  border-color: var(--accent);
+  box-shadow: 0 0 0 3px rgba(109, 135, 255, 0.25);
+}
+
+.hint {
+  color: var(--text-dim);
+  font-size: 0.85rem;
+}
+
+.primary-btn,
+.secondary-btn {
+  border-radius: 999px;
+  padding: 0.75rem 1.4rem;
+  border: none;
+  font-weight: 600;
+  cursor: pointer;
+  transition: transform 0.2s, box-shadow 0.2s;
+}
+
+.primary-btn {
+  background: linear-gradient(135deg, var(--accent), var(--accent-strong));
+  color: #0b0c12;
+}
+
+.primary-btn:hover {
+  transform: translateY(-1px);
+  box-shadow: 0 12px 30px rgba(109, 135, 255, 0.3);
+}
+
+.secondary-btn {
+  background: transparent;
+  border: 1px solid var(--panel-border);
+  color: var(--text);
+}
+
+.secondary-btn:hover {
+  border-color: var(--accent);
+  color: var(--accent);
+}
+
+.form-status {
+  min-height: 1.5rem;
+  font-size: 0.9rem;
+  color: var(--text-dim);
+}
+
+.form-status[data-state="success"] {
+  color: var(--success);
+}
+
+.form-status[data-state="error"] {
+  color: var(--danger);
+}
+
+.advanced-options summary {
+  cursor: pointer;
+  font-weight: 600;
+}
+
+.advanced-options[open] summary {
+  color: var(--accent);
+}
+
+.advanced-grid {
+  display: grid;
+  gap: 1rem;
+  grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+  margin-top: 1rem;
+}
+
+.advanced-grid label {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+  font-weight: 500;
+}
+
+.checkbox {
+  flex-direction: row;
+  align-items: center;
+  gap: 0.75rem;
+}
+
+.jobs-panel {
+  max-height: calc(100vh - 8rem);
+  overflow: auto;
+}
+
+.jobs-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+
+.jobs-list {
+  display: grid;
+  gap: 1rem;
+}
+
+.job-card {
+  border: 1px solid var(--panel-border);
+  border-radius: 12px;
+  padding: 1rem 1.2rem;
+  background: rgba(17, 18, 26, 0.4);
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+  transition: border 0.2s, transform 0.2s;
+}
+
+.job-card:hover {
+  border-color: var(--accent);
+  transform: translateY(-2px);
+}
+
+.job-card header {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+}
+
+dl {
+  margin: 0;
+  display: grid;
+  gap: 0.5rem;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+dl div {
+  display: flex;
+  justify-content: space-between;
+  gap: 1rem;
+}
+
+dl dt {
+  font-weight: 600;
+  color: var(--text-dim);
+}
+
+dl dd {
+  margin: 0;
+}
+
+.job-link {
+  text-decoration: none;
+  color: var(--accent);
+  font-weight: 600;
+}
+
+.status {
+  padding: 0.25rem 0.75rem;
+  border-radius: 999px;
+  font-size: 0.8rem;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  border: 1px solid transparent;
+}
+
+.status-pending {
+  color: var(--warning);
+  border-color: rgba(251, 191, 36, 0.4);
+}
+
+.status-running {
+  color: var(--accent-strong);
+  border-color: rgba(109, 135, 255, 0.4);
+}
+
+.status-success {
+  color: var(--success);
+  border-color: rgba(63, 182, 139, 0.4);
+}
+
+.status-failed {
+  color: var(--danger);
+  border-color: rgba(248, 113, 113, 0.4);
+}
+
+.status-cancelled {
+  color: var(--text-dim);
+  border-color: rgba(153, 161, 194, 0.4);
+}
+
+.job-detail {
+  display: grid;
+  gap: 1.5rem;
+}
+
+.job-summary dl code {
+  font-size: 0.85rem;
+  word-break: break-all;
+}
+
+.job-events ul {
+  list-style: none;
+  padding: 0;
+  margin: 0;
+  display: grid;
+  gap: 0.5rem;
+}
+
+.job-events li {
+  padding: 0.5rem 0.75rem;
+  border: 1px solid var(--panel-border);
+  border-radius: 10px;
+  background: rgba(17, 18, 26, 0.35);
+}
+
+.job-events .timestamp {
+  color: var(--text-dim);
+  margin-right: 0.75rem;
+  font-family: monospace;
+}
+
+.job-logs pre {
+  background: #08090f;
+  border-radius: 12px;
+  padding: 1rem;
+  max-height: 420px;
+  overflow: auto;
+  font-size: 0.85rem;
+  line-height: 1.5;
+}
+
+.empty {
+  padding: 3rem;
+  text-align: center;
+  color: var(--text-dim);
+}
+
+.app-footer {
+  padding: 1rem 2rem;
+  border-top: 1px solid var(--panel-border);
+  color: var(--text-dim);
+  text-align: center;
+}
+
+.app-footer a {
+  color: var(--accent);
+}
+
+@media (max-width: 1080px) {
+  .dashboard {
+    grid-template-columns: 1fr;
+  }
+}
+
+@media (max-width: 640px) {
+  .app-main {
+    padding: 1.5rem 1rem;
+  }
+
+  .panel {
+    padding: 1.25rem;
+  }
+}
