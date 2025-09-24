@@ -1,0 +1,30 @@
+version: "3.9"
+
+services:
+  web:
+    build: .
+    ports:
+      - "5000:5000"
+    depends_on:
+      axolotl:
+        condition: service_started
+    environment:
+      FLASK_ENV: production
+      DOCKER_CONTAINER_NAME: axolotl
+      TRAINING_ROOT: /workspace/axolotl-ui/data
+      UPLOAD_FOLDER: /workspace/axolotl-ui/data/datasets
+      CONFIG_FOLDER: /workspace/axolotl-ui/data/configs
+      LOG_FOLDER: /workspace/axolotl-ui/data/logs
+      DATABASE_URL: sqlite:////app/instance/app.db
+    volumes:
+      - ./data:/workspace/axolotl-ui/data
+      - ./instance:/app/instance
+    restart: unless-stopped
+
+  axolotl:
+    extends:
+      file: existing-axolotl-docker.yaml
+      service: axolotl
+    volumes:
+      - ./data:/workspace/axolotl-ui/data
+    depends_on: {}

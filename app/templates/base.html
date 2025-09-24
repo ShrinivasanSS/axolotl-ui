@@ -1,0 +1,43 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>{% block title %}Axolotl Fine-Tuning UI{% endblock %}</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
+    {% block head_scripts %}{% endblock %}
+  </head>
+  <body>
+    <header class="app-header">
+      <div class="branding">
+        <h1>Axolotl Fine-Tuning Dashboard</h1>
+        <p class="subtitle">Manage LoRA, QLoRA, DPO, and RL fine-tuning jobs for open-source models.</p>
+      </div>
+      <nav class="top-links">
+        <a href="https://docs.axolotl.ai/docs/getting-started.html" target="_blank" rel="noopener">Axolotl Docs</a>
+        <a href="https://docs.axolotl.ai/docs/config-reference.html" target="_blank" rel="noopener">Config Reference</a>
+        <a href="{{ url_for('main.index') }}">Dashboard</a>
+      </nav>
+    </header>
+
+    <main class="app-main">
+      {% with messages = get_flashed_messages() %}
+        {% if messages %}
+          <div class="flash-messages">
+            {% for message in messages %}
+              <div class="flash-message">{{ message }}</div>
+            {% endfor %}
+          </div>
+        {% endif %}
+      {% endwith %}
+      {% block content %}{% endblock %}
+    </main>
+
+    <footer class="app-footer">
+      <p>Dataset format guidance: <a href="https://docs.axolotl.ai/docs/dataset-formats/" target="_blank" rel="noopener">chat_template</a> | Powered by Axolotl.</p>
+    </footer>
+
+    <script src="{{ url_for('static', filename='js/app.js') }}" defer></script>
+    {% block footer_scripts %}{% endblock %}
+  </body>
+</html>

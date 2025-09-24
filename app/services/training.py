@@ -1,0 +1,182 @@
+from __future__ import annotations
+
+import os
+import shlex
+import subprocess
+import threading
+from datetime import datetime
+from pathlib import Path
+from typing import Any, Optional
+
+from flask import current_app
+from werkzeug.datastructures import FileStorage
+
+from ..extensions import db
+from ..models import TrainingJob, User
+from .config_builder import build_training_config
+
+
+_threads: dict[int, threading.Thread] = {}
+
+
+def allowed_file(filename: str) -> bool:
+    allowed = current_app.config["DATASET_ALLOWED_EXTENSIONS"]
+    return "." in filename and filename.rsplit(".", 1)[1].lower() in allowed
+
+
+def store_dataset(file: FileStorage, filename: Optional[str] = None) -> str:
+    upload_dir = Path(current_app.config["UPLOAD_FOLDER"])
+    upload_dir.mkdir(parents=True, exist_ok=True)
+
+    safe_name = filename or secure_filename(file.filename or "dataset.jsonl")
+    dataset_path = upload_dir / safe_name
+    counter = 1
+    while dataset_path.exists():
+        name, ext = os.path.splitext(safe_name)
+        dataset_path = upload_dir / f"{name}-{counter}{ext}"
+        counter += 1
+
+    file.save(dataset_path)
+    return str(dataset_path)
+
+
+def secure_filename(filename: str) -> str:
+    keepcharacters = (".", "_", "-")
+    return "".join(c for c in filename if c.isalnum() or c in keepcharacters).strip().lower() or "dataset.jsonl"
+
+
+def generate_log_path(job_id: int) -> str:
+    log_dir = Path(current_app.config["LOG_FOLDER"])
+    log_dir.mkdir(parents=True, exist_ok=True)
+    return str(log_dir / f"job-{job_id}.log")
+
+
+def determine_output_dir(job_slug: str) -> str:
+    training_root = Path(current_app.config["TRAINING_ROOT"])
+    output_dir = training_root / "outputs" / job_slug
+    output_dir.mkdir(parents=True, exist_ok=True)
+    return str(output_dir)
+
+
+def create_training_job(
+    *,
+    user: User,
+    display_name: str,
+    base_model: str,
+    training_method: str,
+    dataset_file: FileStorage,
+    params: dict[str, Any],
+) -> TrainingJob:
+    if not dataset_file or not dataset_file.filename:
+        raise ValueError("A dataset file is required.")
+
+    if not allowed_file(dataset_file.filename):
+        raise ValueError("Unsupported dataset file extension.")
+
+    dataset_path = store_dataset(dataset_file)
+    slug_base = secure_filename(display_name) or "training-run"
+    job_slug = f"{slug_base}-{datetime.utcnow().strftime('%Y%m%d%H%M%S')}"
+    output_dir = determine_output_dir(job_slug)
+
+    config_path = build_training_config(
+        base_model=base_model,
+        training_method=training_method,
+        dataset_path=dataset_path,
+        output_dir=output_dir,
+        params=params,
+        config_folder=current_app.config["CONFIG_FOLDER"],
+    )
+
+    docker_command = build_docker_command(config_path)
+
+    job = TrainingJob(
+        user=user,
+        display_name=display_name,
+        base_model=base_model,
+        training_method=training_method,
+        dataset_path=dataset_path,
+        config_path=config_path,
+        log_path="",  # placeholder set after flush
+        parameters=params,
+        docker_command=docker_command,
+    )
+    db.session.add(job)
+    db.session.flush()
+
+    job.log_path = generate_log_path(job.id)
+    job.append_event(f"Config generated at {config_path}")
+    job.append_event(f"Dataset stored at {dataset_path}")
+    job.append_event(f"Output will be written to {output_dir}")
+    db.session.commit()
+
+    launch_training_thread(job.id)
+    return job
+
+
+def build_docker_command(config_path: str) -> str:
+    container = current_app.config["DOCKER_CONTAINER_NAME"]
+    return (
+        f"docker exec {shlex.quote(container)} "
+        "accelerate launch -m axolotl.cli.train "
+        f"{shlex.quote(config_path)}"
+    )
+
+
+def launch_training_thread(job_id: int) -> None:
+    if job_id in _threads:
+        return
+
+    app = current_app._get_current_object()
+    thread = threading.Thread(target=_run_training_job, args=(app, job_id), daemon=True)
+    _threads[job_id] = thread
+    thread.start()
+
+
+def _run_training_job(app, job_id: int) -> None:
+    with app.app_context():
+        job = TrainingJob.query.get(job_id)
+        if not job:
+            return
+        job.mark_started()
+        job.append_event("Starting training process")
+        db.session.commit()
+
+        log_path = Path(job.log_path)
+        log_path.parent.mkdir(parents=True, exist_ok=True)
+
+        command = job.docker_command
+        job.append_event(f"Running command: {command}")
+        db.session.commit()
+
+    try:
+        with open(job.log_path, "a", encoding="utf-8") as log_file:
+            process = subprocess.Popen(
+                command,
+                shell=True,
+                stdout=log_file,
+                stderr=log_file,
+            )
+            ret = process.wait()
+    except Exception as exc:  # pragma: no cover - protective
+        with app.app_context():
+            job = TrainingJob.query.get(job_id)
+            if job:
+                job.append_event(f"Training failed with exception: {exc}")
+                job.mark_completed(False)
+                db.session.commit()
+        _threads.pop(job_id, None)
+        return
+
+    with app.app_context():
+        job = TrainingJob.query.get(job_id)
+        if not job:
+            return
+        success = ret == 0
+        job.mark_completed(success)
+        if success:
+            job.append_event("Training completed successfully")
+        else:
+            job.append_event(f"Training exited with code {ret}")
+        db.session.commit()
+
+    _threads.pop(job_id, None)

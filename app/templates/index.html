@@ -1,0 +1,92 @@
+{% extends "base.html" %}
+
+{% block title %}Fine-Tuning Dashboard{% endblock %}
+
+{% block content %}
+<section class="dashboard">
+  <div class="panel create-panel">
+    <h2>Create a fine-tuning run</h2>
+    <p class="panel-description">Configure training parameters, upload a chat_template dataset, and launch the job inside the Axolotl container.</p>
+    <form id="training-form" enctype="multipart/form-data">
+      <div class="field-group">
+        <label for="display_name">Run name</label>
+        <input type="text" id="display_name" name="display_name" placeholder="e.g. gpt-oss-lora-exp" />
+      </div>
+
+      <div class="field-group">
+        <label for="training_method">Training method</label>
+        <select id="training_method" name="training_method" required>
+          {% for method in training_methods %}
+            <option value="{{ method.id }}">{{ method.label }}</option>
+          {% endfor %}
+        </select>
+        <small class="hint">Supports LoRA, QLoRA, Direct Preference Optimization, and RL style fine-tuning.</small>
+      </div>
+
+      <div class="field-group">
+        <label for="base_model">Base model</label>
+        <select id="base_model" name="base_model" required>
+          {% for key, info in models.items() %}
+            <option value="{{ key }}">{{ info.label }}</option>
+          {% endfor %}
+        </select>
+        <small class="hint">Reference configs sourced from Axolotl examples.</small>
+      </div>
+
+      <div class="field-group">
+        <label for="dataset">Training dataset</label>
+        <input type="file" id="dataset" name="dataset" accept=".json,.jsonl,.yaml,.yml" required />
+        <small class="hint">Upload chat_template formatted data (<a href="{{ dataset_help_url }}" target="_blank">learn more</a>).</small>
+      </div>
+
+      <details class="advanced-options">
+        <summary>Advanced hyperparameters</summary>
+        <div class="advanced-grid">
+          <label>Learning rate <input type="number" step="0.000001" name="learning_rate" placeholder="2e-5" /></label>
+          <label>Epochs <input type="number" name="num_epochs" min="1" placeholder="1" /></label>
+          <label>Max steps <input type="number" name="max_steps" min="1" /></label>
+          <label>Micro batch size <input type="number" name="micro_batch_size" min="1" placeholder="1" /></label>
+          <label>Grad accumulation <input type="number" name="gradient_accumulation_steps" min="1" placeholder="1" /></label>
+          <label>Save steps <input type="number" name="save_steps" min="1" placeholder="100" /></label>
+          <label>Logging steps <input type="number" name="logging_steps" min="1" placeholder="10" /></label>
+          <label>Warmup steps <input type="number" name="warmup_steps" min="0" placeholder="50" /></label>
+          <label>Seed <input type="number" name="seed" min="0" placeholder="42" /></label>
+          <label>chat_template <input type="text" name="chat_template" placeholder="axolotl" /></label>
+          <label>W&B project <input type="text" name="wandb_project" placeholder="optional" /></label>
+          <label>Validation path <input type="text" name="validation_path" placeholder="optional" /></label>
+          <label class="checkbox"><input type="checkbox" name="sample_packing" checked /> Sample packing</label>
+          <label class="checkbox"><input type="checkbox" name="flash_attention" checked /> Flash attention</label>
+          <label class="checkbox"><input type="checkbox" name="bf16" checked /> bf16</label>
+          <label>Extra parameters <textarea name="extra_parameters" rows="3" placeholder='{"gradient_checkpointing": true}'></textarea></label>
+        </div>
+      </details>
+
+      <button type="submit" class="primary-btn">Launch training</button>
+      <p class="form-status" id="form-status"></p>
+    </form>
+  </div>
+
+  <div class="panel jobs-panel">
+    <div class="jobs-header">
+      <h2>Fine-tuning runs</h2>
+      <button type="button" class="secondary-btn" id="refresh-jobs">Refresh</button>
+    </div>
+    <div id="jobs-list" class="jobs-list" data-empty="No fine-tuning jobs yet. Create one to get started.">
+      {% for job in jobs %}
+        <article class="job-card" data-job-id="{{ job.id }}">
+          <header>
+            <h3>{{ job.display_name }}</h3>
+            <span class="status status-{{ job.status.value }}">{{ job.status.value|capitalize }}</span>
+          </header>
+          <dl>
+            <div><dt>Model</dt><dd>{{ job.base_model }}</dd></div>
+            <div><dt>Method</dt><dd>{{ job.training_method|upper }}</dd></div>
+            <div><dt>Created</dt><dd>{{ job.created_at.strftime('%Y-%m-%d %H:%M') }}</dd></div>
+          </dl>
+          <a class="job-link" href="{{ url_for('main.job_detail', job_id=job.id) }}">View details →</a>
+        </article>
+      {% endfor %}
+    </div>
+  </div>
+</section>
+{% endblock %}
