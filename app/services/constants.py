@@ -7,6 +7,33 @@ from pathlib import Path
 from typing import Iterable
 
 
+def _title_case_segment(segment: str) -> str:
+    words = segment.replace("-", " ").replace("_", " ").split()
+    formatted = []
+    for word in words:
+        if word.isupper():
+            formatted.append(word)
+        else:
+            formatted.append(word.capitalize())
+    return " ".join(formatted)
+
+
+def _label_from_id(identifier: str) -> str:
+    parts = [part for part in identifier.split("/") if part]
+    if not parts:
+        return identifier
+    return " -- ".join(_title_case_segment(part) for part in parts)
+
+
+def _normalize_label(raw_label: str | None, identifier: str) -> str:
+    if raw_label:
+        cleaned = raw_label.replace("\u2022", " -- ")
+        cleaned = " ".join(cleaned.split())
+        cleaned = cleaned.strip()
+        return cleaned or _label_from_id(identifier)
+    return _label_from_id(identifier)
+
+
 @dataclass(frozen=True)
 class TrainingMethod:
     id: str
@@ -49,11 +76,12 @@ def _load_open_source_models() -> dict[str, ModelOption]:
 
     models: dict[str, ModelOption] = {}
     for entry in raw_models:
+        identifier = entry.get("id", "")
         option = ModelOption(
-            id=entry.get("id", ""),
+            id=identifier,
             family=entry.get("family", "misc"),
             family_label=entry.get("family_label", entry.get("family", "Misc")),
-            label=entry.get("label", entry.get("id", "")),
+            label=_normalize_label(entry.get("label"), identifier),
             base_model=entry.get("base_model"),
             default_suffix=entry.get("default_suffix"),
             reference_config=entry.get("reference_config"),
