@@ -16,8 +16,12 @@ from flask import (
 
 from .extensions import db
 from .models import TrainingJob, User
-from .services.constants import OPEN_SOURCE_MODELS, TRAINING_METHODS
-from .services.training import create_training_job
+from .services.constants import (
+    OPEN_SOURCE_MODELS,
+    TRAINING_METHODS,
+    group_models_by_family,
+)
+from .services.training import create_training_job, list_available_datasets
 
 
 main_bp = Blueprint("main", __name__)
@@ -27,10 +31,12 @@ api_bp = Blueprint("api", __name__)
 @main_bp.route("/")
 def index() -> str:
     jobs = TrainingJob.query.order_by(TrainingJob.created_at.desc()).limit(10).all()
+    model_groups = group_models_by_family(OPEN_SOURCE_MODELS)
     return render_template(
         "index.html",
         training_methods=TRAINING_METHODS,
         models=OPEN_SOURCE_MODELS,
+        model_groups=model_groups,
         jobs=jobs,
         dataset_help_url="https://docs.axolotl.ai/docs/dataset-formats/",
         api_docs_url="https://docs.axolotl.ai/docs/api/",
@@ -44,17 +50,36 @@ def submit_training() -> Response:
 
     training_method = form.get("training_method")
     base_model = form.get("base_model")
-    display_name = form.get("display_name") or f"{base_model}-{training_method}"
+    model_option = OPEN_SOURCE_MODELS.get(base_model)
 
     if training_method not in {method.id for method in TRAINING_METHODS}:
         return jsonify({"error": "Invalid training method"}), 400
 
-    if base_model not in OPEN_SOURCE_MODELS:
+    if not model_option:
         return jsonify({"error": "Invalid base model"}), 400
 
-    dataset_file = files.get("dataset")
+    default_suffix = model_option.default_suffix or model_option.id.split("/")[-1]
+    display_name = form.get("display_name") or f"{default_suffix}-{training_method}"
+
+    dataset_mode = form.get("dataset_mode", "upload")
+    dataset_file = files.get("dataset") if dataset_mode != "existing" else None
+    existing_dataset = form.get("existing_dataset") if dataset_mode == "existing" else None
+
+    if dataset_mode == "existing" and not existing_dataset:
+        return jsonify({"error": "Select a stored dataset or upload a new file."}), 400
 
     params = collect_params(form)
+    params.update(
+        {
+            "model_choice_id": model_option.id,
+            "model_label": model_option.label,
+            "model_family": model_option.family_label,
+            "model_reference_config": model_option.reference_config,
+            "resolved_base_model": model_option.resolved_base_model,
+            "dataset_mode": dataset_mode,
+            "dataset_selection": existing_dataset,
+        }
+    )
 
     user = User.query.filter_by(email=current_app.config["DEFAULT_SUPERUSER_EMAIL"]).first()
     if not user:
@@ -66,9 +91,10 @@ def submit_training() -> Response:
         job = create_training_job(
             user=user,
             display_name=display_name,
-            base_model=base_model,
+            base_model=model_option.id,
             training_method=training_method,
             dataset_file=dataset_file,
+            existing_dataset=existing_dataset,
             params=params,
         )
     except ValueError as exc:
@@ -175,23 +201,40 @@ def choices() -> Response:
     return jsonify(
         {
             "training_methods": [method.__dict__ for method in TRAINING_METHODS],
-            "models": OPEN_SOURCE_MODELS,
+            "models": {key: option.to_choice() for key, option in OPEN_SOURCE_MODELS.items()},
         }
     )
 
 
+@api_bp.route("/datasets")
+def datasets() -> Response:
+    return jsonify(list_available_datasets())
+
+
 def job_to_dict(job: TrainingJob) -> dict[str, Any]:
+    params = job.parameters or {}
+    model_label = params.get("model_label")
+    resolved_base_model = params.get("resolved_base_model") or job.base_model
+    dataset_storage_name = params.get("dataset_storage_name") or Path(job.dataset_path).name
+    dataset_mode = params.get("dataset_mode", "upload")
     return {
         "id": job.id,
         "display_name": job.display_name,
-        "base_model": job.base_model,
+        "base_model": resolved_base_model,
         "training_method": job.training_method,
         "status": job.status.value,
         "created_at": job.created_at.isoformat(),
         "started_at": job.started_at.isoformat() if job.started_at else None,
         "completed_at": job.completed_at.isoformat() if job.completed_at else None,
         "dataset_path": job.dataset_path,
+        "dataset_mode": dataset_mode,
+        "dataset_filename": dataset_storage_name,
         "config_path": job.config_path,
         "log_path": job.log_path,
         "docker_command": job.docker_command,
+        "model_label": model_label,
+        "model_choice_id": params.get("model_choice_id"),
+        "resolved_base_model": resolved_base_model,
+        "model_reference_config": params.get("model_reference_config"),
+        "model_family": params.get("model_family"),
     }

@@ -3,6 +3,8 @@ from __future__ import annotations
 from datetime import datetime
 from pathlib import Path
 from typing import Any
+from urllib.parse import urlparse
+from urllib.request import urlopen
 
 import yaml
 
@@ -67,60 +69,140 @@ def build_training_config(
 
     method_defaults = DEFAULT_METHOD_PARAMETERS.get(training_method, {})
 
-    config: dict[str, Any] = {
-        "base_model": base_model,
-        "datasets": [
+    model_option = OPEN_SOURCE_MODELS.get(base_model)
+    if not model_option and params.get("model_choice_id"):
+        model_option = OPEN_SOURCE_MODELS.get(params["model_choice_id"])
+
+    resolved_base_model = params.get("resolved_base_model")
+    if not resolved_base_model and model_option:
+        resolved_base_model = model_option.resolved_base_model
+    if not resolved_base_model:
+        resolved_base_model = base_model
+
+    config: dict[str, Any] = {}
+
+    reference = params.get("model_reference_config")
+    if not reference and model_option:
+        reference = model_option.reference_config
+
+    if reference:
+        config.update(_load_reference_config(reference))
+        config["reference_config"] = reference
+
+    config["base_model"] = resolved_base_model
+    config["output_dir"] = output_dir
+
+    datasets = config.get("datasets")
+    if isinstance(datasets, list) and datasets:
+        first = datasets[0]
+        if isinstance(first, dict):
+            first["path"] = dataset_path
+            first.setdefault("type", params.get("dataset_type", "chat_template"))
+        else:
+            config["datasets"] = [
+                {"path": dataset_path, "type": params.get("dataset_type", "chat_template")}
+            ]
+    else:
+        config["datasets"] = [
             {
                 "path": dataset_path,
-                "type": "chat_template",
+                "type": params.get("dataset_type", "chat_template"),
             }
-        ],
-        "output_dir": output_dir,
-        "chat_template": params.get("chat_template", "alpaca"),
-        "save_total_limit": params.get("save_total_limit", 3),
-        "val_set": params.get("validation_path") or None,
-        "warmup_steps": params.get("warmup_steps", 50),
-        "max_steps": params.get("max_steps"),
-        "num_epochs": params.get("num_epochs", 1),
-        "micro_batch_size": params.get("micro_batch_size", 1),
-        "gradient_accumulation_steps": params.get("gradient_accumulation_steps", 1),
-        "learning_rate": params.get("learning_rate", 2e-5),
-        "logging_steps": params.get("logging_steps", 10),
-        "save_strategy": "steps",
-        "save_steps": params.get("save_steps", 100),
-        "sample_packing": params.get("sample_packing", True),
-        "seed": params.get("seed", 42),
-        "flash_attention": params.get("flash_attention", True),
-        "wandb_project": params.get("wandb_project"),
-    }
+        ]
 
-    if params.get("bf16", True):
-        config["bf16"] = True
+    _set_config_value(config, "chat_template", params.get("chat_template"), default="alpaca")
+    _set_config_value(config, "save_total_limit", params.get("save_total_limit"), default=3)
+    if params.get("validation_path"):
+        config["val_set"] = params["validation_path"]
+        val_sets = config.get("val_sets")
+        if isinstance(val_sets, list) and val_sets:
+            first_val = val_sets[0]
+            if isinstance(first_val, dict):
+                first_val["path"] = params["validation_path"]
+                first_val.setdefault("type", params.get("dataset_type", "chat_template"))
+            else:
+                config["val_sets"] = [
+                    {
+                        "path": params["validation_path"],
+                        "type": params.get("dataset_type", "chat_template"),
+                    }
+                ]
+        else:
+            config["val_sets"] = [
+                {
+                    "path": params["validation_path"],
+                    "type": params.get("dataset_type", "chat_template"),
+                }
+            ]
+    _set_config_value(config, "warmup_steps", params.get("warmup_steps"), default=50)
+    _set_config_value(config, "max_steps", params.get("max_steps"))
+    _set_config_value(config, "num_epochs", params.get("num_epochs"), default=1)
+    _set_config_value(config, "micro_batch_size", params.get("micro_batch_size"), default=1)
+    _set_config_value(
+        config,
+        "gradient_accumulation_steps",
+        params.get("gradient_accumulation_steps"),
+        default=1,
+    )
+    _set_config_value(config, "learning_rate", params.get("learning_rate"), default=2e-5)
+    _set_config_value(config, "logging_steps", params.get("logging_steps"), default=10)
+    config.setdefault("save_strategy", "steps")
+    _set_config_value(config, "save_steps", params.get("save_steps"), default=100)
+    _set_config_value(config, "sample_packing", params.get("sample_packing"), default=True)
+    _set_config_value(config, "seed", params.get("seed"), default=42)
+    _set_config_value(config, "flash_attention", params.get("flash_attention"), default=True)
+    _set_config_value(config, "wandb_project", params.get("wandb_project"))
+
+    if params.get("bf16") is not None:
+        config["bf16"] = params["bf16"]
+    else:
+        config.setdefault("bf16", True)
 
     if params.get("push_to_hub"):
         config["push_dataset_to_hub"] = params.get("push_to_hub")
 
-    if params.get("validation_path"):
-        config.setdefault("val_sets", []).append({
-            "path": params["validation_path"],
-            "type": "chat_template",
-        })
-
-    config.update(method_defaults)
+    for key, value in method_defaults.items():
+        config.setdefault(key, value)
 
     if training_method in {"lora", "qlora"}:
-        config.setdefault("target_modules", [
-            "q_proj",
-            "v_proj",
-            "k_proj",
-            "o_proj",
-        ])
-
-    reference = OPEN_SOURCE_MODELS.get(base_model, {}).get("reference_config")
-    if reference:
-        config["reference_config"] = reference
+        config.pop("target_modules", None)
+        config.setdefault(
+            "lora_target_modules",
+            [
+                "q_proj",
+                "v_proj",
+                "k_proj",
+                "o_proj",
+            ],
+        )
 
     with config_path.open("w", encoding="utf-8") as fp:
         yaml.safe_dump({k: v for k, v in config.items() if v is not None}, fp, sort_keys=False)
 
     return str(config_path)
+
+
+def _set_config_value(config: dict[str, Any], key: str, value: Any, *, default: Any | None = None) -> None:
+    if value is not None:
+        config[key] = value
+    elif default is not None:
+        config.setdefault(key, default)
+
+
+def _load_reference_config(reference: str) -> dict[str, Any]:
+    try:
+        parsed = urlparse(reference)
+        if parsed.scheme in {"http", "https"}:
+            url = reference
+            if parsed.netloc.endswith("github.com") and "/blob/" in parsed.path:
+                owner_repo, blob_path = parsed.path.lstrip("/").split("/blob/", 1)
+                url = f"https://raw.githubusercontent.com/{owner_repo}/{blob_path}"
+            with urlopen(url) as response:
+                return yaml.safe_load(response.read().decode("utf-8")) or {}
+        path = Path(reference)
+        if path.exists():
+            with path.open("r", encoding="utf-8") as fp:
+                return yaml.safe_load(fp) or {}
+    except Exception:  # pragma: no cover - best effort loading
+        return {}
+    return {}

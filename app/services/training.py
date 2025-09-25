@@ -4,7 +4,7 @@ import os
 import shlex
 import subprocess
 import threading
-from datetime import datetime
+from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Optional
 
@@ -14,6 +14,7 @@ from werkzeug.datastructures import FileStorage
 from ..extensions import db
 from ..models import TrainingJob, User
 from .config_builder import build_training_config
+from .constants import OPEN_SOURCE_MODELS
 
 
 _threads: dict[int, threading.Thread] = {}
@@ -24,10 +25,52 @@ def allowed_file(filename: str) -> bool:
     return "." in filename and filename.rsplit(".", 1)[1].lower() in allowed
 
 
-def store_dataset(file: FileStorage, filename: Optional[str] = None) -> str:
+def ensure_upload_dir() -> Path:
     upload_dir = Path(current_app.config["UPLOAD_FOLDER"])
     upload_dir.mkdir(parents=True, exist_ok=True)
+    return upload_dir
 
+
+def list_available_datasets() -> list[dict[str, Any]]:
+    upload_dir = ensure_upload_dir()
+    datasets: list[dict[str, Any]] = []
+    for path in upload_dir.iterdir():
+        if not path.is_file() or not allowed_file(path.name):
+            continue
+        stat = path.stat()
+        datasets.append(
+            {
+                "id": path.name,
+                "filename": path.name,
+                "size_bytes": stat.st_size,
+                "updated_at": datetime.fromtimestamp(stat.st_mtime, tz=timezone.utc).isoformat(),
+            }
+        )
+    datasets.sort(key=lambda item: item["filename"].lower())
+    return datasets
+
+
+def resolve_existing_dataset(filename: str) -> str:
+    if not filename:
+        raise ValueError("Select a stored dataset or upload a new file.")
+
+    upload_dir = ensure_upload_dir().resolve()
+    candidate = (upload_dir / filename).resolve()
+
+    if upload_dir not in candidate.parents and candidate != upload_dir:
+        raise ValueError("Invalid dataset selection.")
+
+    if not candidate.exists() or not candidate.is_file():
+        raise ValueError("Selected dataset could not be found.")
+
+    if not allowed_file(candidate.name):
+        raise ValueError("Unsupported dataset file extension.")
+
+    return str(candidate)
+
+
+def store_dataset(file: FileStorage, filename: Optional[str] = None) -> str:
+    upload_dir = ensure_upload_dir()
     safe_name = filename or secure_filename(file.filename or "dataset.jsonl")
     dataset_path = upload_dir / safe_name
     counter = 1
@@ -64,16 +107,45 @@ def create_training_job(
     display_name: str,
     base_model: str,
     training_method: str,
-    dataset_file: FileStorage,
+    dataset_file: Optional[FileStorage],
     params: dict[str, Any],
+    existing_dataset: Optional[str] = None,
 ) -> TrainingJob:
-    if not dataset_file or not dataset_file.filename:
-        raise ValueError("A dataset file is required.")
+    params = dict(params)
 
-    if not allowed_file(dataset_file.filename):
-        raise ValueError("Unsupported dataset file extension.")
+    dataset_was_uploaded = False
 
-    dataset_path = store_dataset(dataset_file)
+    if existing_dataset:
+        dataset_path = resolve_existing_dataset(existing_dataset)
+        params.setdefault("dataset_mode", "existing")
+    else:
+        if not dataset_file or not dataset_file.filename:
+            raise ValueError("A dataset file is required.")
+
+        if not allowed_file(dataset_file.filename):
+            raise ValueError("Unsupported dataset file extension.")
+
+        dataset_path = store_dataset(dataset_file)
+        dataset_was_uploaded = True
+        params.setdefault("dataset_mode", params.get("dataset_mode", "upload"))
+
+    dataset_filename = Path(dataset_path).name
+    params.setdefault("dataset_storage_name", dataset_filename)
+    if existing_dataset:
+        params.setdefault("dataset_selection", dataset_filename)
+
+    model_option = OPEN_SOURCE_MODELS.get(base_model)
+    if model_option:
+        resolved_base_model = model_option.resolved_base_model
+        params.setdefault("model_choice_id", model_option.id)
+        params.setdefault("model_label", model_option.label)
+        params.setdefault("model_family", model_option.family_label)
+        params.setdefault("model_reference_config", model_option.reference_config)
+    else:
+        resolved_base_model = params.get("resolved_base_model", base_model)
+
+    params["resolved_base_model"] = resolved_base_model
+
     slug_base = secure_filename(display_name) or "training-run"
     job_slug = f"{slug_base}-{datetime.utcnow().strftime('%Y%m%d%H%M%S')}"
     output_dir = determine_output_dir(job_slug)
@@ -92,7 +164,7 @@ def create_training_job(
     job = TrainingJob(
         user=user,
         display_name=display_name,
-        base_model=base_model,
+        base_model=resolved_base_model,
         training_method=training_method,
         dataset_path=dataset_path,
         config_path=config_path,
@@ -105,7 +177,11 @@ def create_training_job(
 
     job.log_path = generate_log_path(job.id)
     job.append_event(f"Config generated at {config_path}")
-    job.append_event(f"Dataset stored at {dataset_path}")
+    if dataset_was_uploaded:
+        job.append_event(f"Dataset stored at {dataset_path}")
+    else:
+        job.append_event(f"Reusing dataset at {dataset_path}")
+    job.append_event(f"Base model resolved to {resolved_base_model}")
     job.append_event(f"Output will be written to {output_dir}")
     db.session.commit()
 
