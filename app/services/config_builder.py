@@ -67,8 +67,18 @@ def build_training_config(
 
     method_defaults = DEFAULT_METHOD_PARAMETERS.get(training_method, {})
 
+    model_option = OPEN_SOURCE_MODELS.get(base_model)
+    if not model_option and params.get("model_choice_id"):
+        model_option = OPEN_SOURCE_MODELS.get(params["model_choice_id"])
+
+    resolved_base_model = params.get("resolved_base_model")
+    if not resolved_base_model and model_option:
+        resolved_base_model = model_option.resolved_base_model
+    if not resolved_base_model:
+        resolved_base_model = base_model
+
     config: dict[str, Any] = {
-        "base_model": base_model,
+        "base_model": resolved_base_model,
         "datasets": [
             {
                 "path": dataset_path,
@@ -116,7 +126,9 @@ def build_training_config(
             "o_proj",
         ])
 
-    reference = OPEN_SOURCE_MODELS.get(base_model, {}).get("reference_config")
+    reference = params.get("model_reference_config")
+    if not reference and model_option:
+        reference = model_option.reference_config
     if reference:
         config["reference_config"] = reference
 
