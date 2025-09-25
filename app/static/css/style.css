@@ -95,6 +95,11 @@ body {
   gap: 0.5rem;
 }
 
+.field-label {
+  font-weight: 600;
+  font-size: 0.95rem;
+}
+
 label {
   font-weight: 600;
   font-size: 0.95rem;
@@ -123,6 +128,28 @@ textarea:focus {
   outline: none;
   border-color: var(--accent);
   box-shadow: 0 0 0 3px rgba(109, 135, 255, 0.25);
+}
+
+.dataset-source-options {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 1rem;
+}
+
+.dataset-source-options label {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4rem;
+  font-weight: 500;
+}
+
+.dataset-source-options input[type="radio"] {
+  accent-color: var(--accent);
+}
+
+[data-dataset-existing] select:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
 }
 
 .hint {
@@ -196,6 +223,20 @@ textarea:focus {
   flex-direction: column;
   gap: 0.5rem;
   font-weight: 500;
+}
+
+.tag {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.25rem;
+  margin-left: 0.5rem;
+  padding: 0.15rem 0.55rem;
+  border-radius: 999px;
+  background: rgba(109, 135, 255, 0.18);
+  color: var(--accent);
+  font-size: 0.7rem;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
 }
 
 .checkbox {

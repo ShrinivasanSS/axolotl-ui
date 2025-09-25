@@ -26,17 +26,38 @@
       <div class="field-group">
         <label for="base_model">Base model</label>
         <select id="base_model" name="base_model" required>
-          {% for key, info in models.items() %}
-            <option value="{{ key }}">{{ info.label }}</option>
+          {% for family, options in model_groups.items() %}
+            <optgroup label="{{ family }}">
+              {% for option in options %}
+                <option value="{{ option.id }}">{{ option.label }}</option>
+              {% endfor %}
+            </optgroup>
           {% endfor %}
         </select>
         <small class="hint">Reference configs sourced from Axolotl examples.</small>
       </div>
 
       <div class="field-group">
+        <span class="field-label">Dataset source</span>
+        <div class="dataset-source-options">
+          <label><input type="radio" name="dataset_mode" value="upload" checked /> Upload new dataset</label>
+          <label><input type="radio" name="dataset_mode" value="existing" /> Use stored dataset</label>
+        </div>
+        <small class="hint">Reuse previously uploaded datasets without re-uploading files.</small>
+      </div>
+
+      <div class="field-group" data-dataset-upload>
         <label for="dataset">Training dataset</label>
-        <input type="file" id="dataset" name="dataset" accept=".json,.jsonl,.yaml,.yml" required />
+        <input type="file" id="dataset" name="dataset" accept=".json,.jsonl,.yaml,.yml" />
         <small class="hint">Upload chat_template formatted data (<a href="{{ dataset_help_url }}" target="_blank">learn more</a>).</small>
+      </div>
+
+      <div class="field-group" data-dataset-existing hidden>
+        <label for="existing_dataset">Stored datasets</label>
+        <select id="existing_dataset" name="existing_dataset" data-empty-option="No stored datasets yet" disabled>
+          <option value="">Loading datasets…</option>
+        </select>
+        <small class="hint" data-existing-empty hidden>Upload a dataset to populate this list.</small>
       </div>
 
       <details class="advanced-options">
@@ -73,13 +94,14 @@
     </div>
     <div id="jobs-list" class="jobs-list" data-empty="No fine-tuning jobs yet. Create one to get started.">
       {% for job in jobs %}
+        {% set model_label = job.parameters.get('model_label') if job.parameters else None %}
         <article class="job-card" data-job-id="{{ job.id }}">
           <header>
             <h3>{{ job.display_name }}</h3>
             <span class="status status-{{ job.status.value }}">{{ job.status.value|capitalize }}</span>
           </header>
           <dl>
-            <div><dt>Model</dt><dd>{{ job.base_model }}</dd></div>
+            <div><dt>Model</dt><dd>{{ model_label or job.base_model }}</dd></div>
             <div><dt>Method</dt><dd>{{ job.training_method|upper }}</dd></div>
             <div><dt>Created</dt><dd>{{ job.created_at.strftime('%Y-%m-%d %H:%M') }}</dd></div>
           </dl>
