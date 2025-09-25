@@ -9,18 +9,31 @@ import yaml
 from ..services.constants import OPEN_SOURCE_MODELS
 
 
+DEFAULT_LORA_TARGET_MODULES: list[str] = [
+    "gate_proj",
+    "down_proj",
+    "up_proj",
+    "q_proj",
+    "v_proj",
+    "k_proj",
+    "o_proj",
+]
+
+
 DEFAULT_METHOD_PARAMETERS: dict[str, dict[str, Any]] = {
     "lora": {
         "adapter": "lora",
         "lora_r": 16,
         "lora_alpha": 32,
         "lora_dropout": 0.05,
+        "lora_target_modules": list(DEFAULT_LORA_TARGET_MODULES),
     },
     "qlora": {
         "adapter": "qlora",
         "load_in_4bit": True,
         "bnb_4bit_compute_dtype": "bfloat16",
         "bnb_4bit_use_double_quant": True,
+        "lora_target_modules": list(DEFAULT_LORA_TARGET_MODULES),
     },
     "dpo": {
         "loss": "dpo",
@@ -119,12 +132,7 @@ def build_training_config(
     config.update(method_defaults)
 
     if training_method in {"lora", "qlora"}:
-        config.setdefault("target_modules", [
-            "q_proj",
-            "v_proj",
-            "k_proj",
-            "o_proj",
-        ])
+        config.setdefault("lora_target_modules", list(DEFAULT_LORA_TARGET_MODULES))
 
     reference = params.get("model_reference_config")
     if not reference and model_option:
