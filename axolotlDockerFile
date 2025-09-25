@@ -1,0 +1,7 @@
+FROM axolotlai/axolotl:main-py3.11-cu128-2.7.0
+
+RUN pip3 install "axolotl[flash-attn,deepspeed] @ git+https://github.com/OpenAccess-AI-Collective/axolotl"
+
+RUN pip3 install packaging torch torchvision torchaudio --index-url https://download.pytorch.org/whl/cu128
+
+RUN axolotl --help && axolotl --version

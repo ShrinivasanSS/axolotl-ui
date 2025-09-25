@@ -76,7 +76,7 @@ def build_training_config(
             }
         ],
         "output_dir": output_dir,
-        "chat_template": params.get("chat_template", "axolotl"),
+        "chat_template": params.get("chat_template", "alpaca"),
         "save_total_limit": params.get("save_total_limit", 3),
         "val_set": params.get("validation_path") or None,
         "warmup_steps": params.get("warmup_steps", 50),

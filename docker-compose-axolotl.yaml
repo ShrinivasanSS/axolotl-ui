@@ -1,9 +1,14 @@
 services:
   axolotl:
-    image: axolotlai/axolotl:main-py3.11-cu128-2.7.0
+    # image: axolotlai/axolotl:main-py3.11-cu128-2.7.0
+    container_name: axolotl-ui-backend
+    build:
+      context: ./
+      dockerfile: axolotlDockerFile
+    image: axolotl-ui-backend
     volumes:
-      - ./workspace/:/workspace/axolotl
-      - ./Huggingface/:/root/.cache/huggingface/
+      - ../workspace/:/workspace/axolotl
+      - ../Huggingface/:/root/.cache/huggingface/
     environment:
       - GIT_AUTHOR_NAME=${GIT_AUTHOR_NAME}
       - GIT_AUTHOR_EMAIL=${GIT_AUTHOR_EMAIL}

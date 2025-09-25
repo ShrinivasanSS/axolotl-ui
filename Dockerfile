@@ -12,7 +12,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 COPY requirements.txt ./
 RUN pip install --no-cache-dir -r requirements.txt
 
-COPY . .
+#COPY . .
 
 ENV FLASK_APP=wsgi.py
 ENV FLASK_ENV=production

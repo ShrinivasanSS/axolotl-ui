@@ -8,23 +8,27 @@ services:
     depends_on:
       axolotl:
         condition: service_started
+    container_name: axolotl-ui-frontend
+    image: axolotl-ui-frontend
     environment:
       FLASK_ENV: production
-      DOCKER_CONTAINER_NAME: axolotl
+      DOCKER_CONTAINER_NAME: axolotl-ui-backend
       TRAINING_ROOT: /workspace/axolotl-ui/data
       UPLOAD_FOLDER: /workspace/axolotl-ui/data/datasets
       CONFIG_FOLDER: /workspace/axolotl-ui/data/configs
       LOG_FOLDER: /workspace/axolotl-ui/data/logs
       DATABASE_URL: sqlite:////app/instance/app.db
     volumes:
-      - ./data:/workspace/axolotl-ui/data
+      - ./:/app/
+      - ../workspace:/workspace/
+      - ../workspace/axolotl-ui/data:/workspace/axolotl-ui/data
       - ./instance:/app/instance
     restart: unless-stopped
 
   axolotl:
     extends:
-      file: existing-axolotl-docker.yaml
+      file: docker-compose-axolotl.yaml
       service: axolotl
     volumes:
-      - ./data:/workspace/axolotl-ui/data
+      - ../workspace/axolotl-ui/data:/workspace/axolotl-ui/data
     depends_on: {}
