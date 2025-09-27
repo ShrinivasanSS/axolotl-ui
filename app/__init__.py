@@ -17,6 +17,7 @@ def create_app(config_class: type[Config] = Config) -> Flask:
     os.makedirs(app.config["UPLOAD_FOLDER"], exist_ok=True)
     os.makedirs(app.config["CONFIG_FOLDER"], exist_ok=True)
     os.makedirs(app.config["LOG_FOLDER"], exist_ok=True)
+    os.makedirs(app.config["TEMPLATE_FOLDER"], exist_ok=True)
 
     db.init_app(app)
     migrate.init_app(app, db)

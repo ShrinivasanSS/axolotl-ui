@@ -4,6 +4,19 @@ class TrainingFormController {
     this.statusEl = document.getElementById('form-status');
     this.form.addEventListener('submit', (event) => this.handleSubmit(event));
 
+    this.booleanCheckboxes = Array.from(
+      this.form.querySelectorAll('input[type="checkbox"][data-boolean]')
+    );
+
+    this.templateRadios = Array.from(this.form.querySelectorAll('input[name="template_mode"]'));
+    this.templateExistingGroup = this.form.querySelector('[data-template-existing]');
+    this.templateUploadGroup = this.form.querySelector('[data-template-upload]');
+    this.templateSelect = this.form.querySelector('#template_choice');
+    this.templateFileInput = this.form.querySelector('#template_file');
+    this.templateStatusEls = Array.from(this.form.querySelectorAll('[data-template-status]'));
+    this.templateEmptyHint = this.form.querySelector('[data-template-empty]');
+    this.autoSelectedTemplate = false;
+
     this.datasetRadios = Array.from(this.form.querySelectorAll('input[name="dataset_mode"]'));
     this.datasetUploadGroup = this.form.querySelector('[data-dataset-upload]');
     this.datasetExistingGroup = this.form.querySelector('[data-dataset-existing]');
@@ -15,14 +28,27 @@ class TrainingFormController {
       radio.addEventListener('change', () => this.updateDatasetMode())
     );
 
+    this.templateRadios.forEach((radio) =>
+      radio.addEventListener('change', () => this.updateTemplateMode())
+    );
+    if (this.templateSelect) {
+      this.templateSelect.addEventListener('change', () => this.handleTemplateSelection());
+    }
+    if (this.templateFileInput) {
+      this.templateFileInput.addEventListener('change', () => this.handleTemplateUpload());
+    }
+
     this.updateDatasetMode();
+    this.updateTemplateMode();
     this.loadDatasets();
+    this.loadTemplates();
   }
 
   async handleSubmit(event) {
     event.preventDefault();
     const formData = new FormData(this.form);
     const mode = this.getDatasetMode();
+    const templateMode = this.getTemplateMode();
 
     if (mode === 'existing') {
       if (!this.existingDatasetSelect || !this.existingDatasetSelect.value) {
@@ -34,6 +60,22 @@ class TrainingFormController {
       this.setStatus('Please choose a dataset file to upload.', 'error');
       return;
     }
+
+    if (templateMode === 'existing') {
+      if (!this.templateSelect || !this.templateSelect.value) {
+        this.setStatus('Please choose a template from the library or upload a new file.', 'error');
+        return;
+      }
+    } else if (templateMode === 'upload') {
+      if (!this.templateFileInput || this.templateFileInput.files.length === 0) {
+        this.setStatus('Select a template YAML file to upload.', 'error');
+        return;
+      }
+    }
+
+    this.booleanCheckboxes.forEach((checkbox) => {
+      formData.set(checkbox.name, checkbox.checked ? 'true' : 'false');
+    });
 
     this.setStatus('Submitting fine-tuning job…');
     try {
@@ -65,6 +107,11 @@ class TrainingFormController {
     return checked ? checked.value : 'upload';
   }
 
+  getTemplateMode() {
+    const checked = this.templateRadios.find((radio) => radio.checked);
+    return checked ? checked.value : 'existing';
+  }
+
   updateDatasetMode() {
     const mode = this.getDatasetMode();
     const existingRadio = this.datasetRadios.find((radio) => radio.value === 'existing');
@@ -87,6 +134,34 @@ class TrainingFormController {
     }
     if (this.existingDatasetSelect) {
       this.existingDatasetSelect.required = mode === 'existing';
+    }
+  }
+
+  updateTemplateMode() {
+    const mode = this.getTemplateMode();
+    const existingRadio = this.templateRadios.find((radio) => radio.value === 'existing');
+    const uploadRadio = this.templateRadios.find((radio) => radio.value === 'upload');
+
+    if (this.templateExistingGroup) {
+      const hasOptions = this.templateSelect && !this.templateSelect.disabled;
+      this.templateExistingGroup.hidden = mode !== 'existing' || !hasOptions;
+      if (existingRadio) {
+        existingRadio.disabled = !hasOptions;
+        if (!hasOptions && existingRadio.checked && uploadRadio) {
+          uploadRadio.checked = true;
+        }
+      }
+    }
+
+    if (this.templateUploadGroup) {
+      this.templateUploadGroup.hidden = mode !== 'upload';
+    }
+
+    if (this.templateSelect) {
+      this.templateSelect.required = mode === 'existing';
+    }
+    if (this.templateFileInput) {
+      this.templateFileInput.required = mode === 'upload';
     }
   }
 
@@ -150,6 +225,204 @@ class TrainingFormController {
       this.datasetEmptyHint.hidden = true;
     }
     this.updateDatasetMode();
+  }
+
+  async loadTemplates() {
+    if (!this.templateSelect) return;
+    try {
+      const response = await fetch('/api/templates');
+      const templates = await response.json();
+      this.populateTemplateOptions(Array.isArray(templates) ? templates : []);
+    } catch (error) {
+      console.error('Failed to load templates', error);
+      this.populateTemplateOptions([]);
+    }
+  }
+
+  populateTemplateOptions(templates) {
+    if (!this.templateSelect) return;
+    const select = this.templateSelect;
+    select.innerHTML = '';
+
+    if (!Array.isArray(templates) || templates.length === 0) {
+      const option = new Option(select.dataset.emptyOption || 'No templates available', '');
+      option.disabled = true;
+      select.appendChild(option);
+      select.disabled = true;
+      if (this.templateEmptyHint) {
+        this.templateEmptyHint.hidden = false;
+      }
+      this.updateTemplateMode();
+      return;
+    }
+
+    select.disabled = false;
+    const groups = new Map();
+    for (const template of templates) {
+      const groupLabel = template.group || 'Templates';
+      if (!groups.has(groupLabel)) {
+        const optgroup = document.createElement('optgroup');
+        optgroup.label = groupLabel;
+        groups.set(groupLabel, optgroup);
+      }
+      const option = new Option(template.label, template.id);
+      option.dataset.source = template.source || '';
+      option.dataset.filename = template.filename || '';
+      groups.get(groupLabel).appendChild(option);
+    }
+
+    const placeholder = new Option('Select a template…', '');
+    select.appendChild(placeholder);
+    for (const [, groupEl] of groups) {
+      select.appendChild(groupEl);
+    }
+
+    if (this.templateEmptyHint) {
+      this.templateEmptyHint.hidden = true;
+    }
+
+    if (!this.autoSelectedTemplate) {
+      const firstTemplate = select.querySelector('option[value]:not([value=""])');
+      if (firstTemplate) {
+        firstTemplate.selected = true;
+        this.autoSelectedTemplate = true;
+        this.handleTemplateSelection();
+      }
+    }
+
+    this.updateTemplateMode();
+  }
+
+  async handleTemplateSelection() {
+    if (!this.templateSelect || !this.templateSelect.value) {
+      this.setTemplateStatus('Select a template to load configuration hints.', 'info');
+      return;
+    }
+
+    const id = this.templateSelect.value;
+    const existingRadio = this.templateRadios.find((radio) => radio.value === 'existing');
+    if (existingRadio && !existingRadio.checked) {
+      existingRadio.checked = true;
+      this.updateTemplateMode();
+    }
+    this.setTemplateStatus('Loading template details…');
+    try {
+      const response = await fetch(`/api/templates/info?id=${encodeURIComponent(id)}`);
+      const payload = await response.json();
+      if (!response.ok) {
+        throw new Error(payload.error || 'Failed to load template details');
+      }
+      this.applyTemplateMetadata(payload.metadata, payload);
+      this.setTemplateStatus('Template settings applied.', 'success');
+    } catch (error) {
+      console.error('Failed to inspect template', error);
+      this.setTemplateStatus(error.message || 'Failed to inspect template', 'error');
+    }
+  }
+
+  async handleTemplateUpload() {
+    if (!this.templateFileInput || this.templateFileInput.files.length === 0) {
+      this.setTemplateStatus('Select a template YAML file to analyze.', 'info');
+      return;
+    }
+
+    const file = this.templateFileInput.files[0];
+    const uploadRadio = this.templateRadios.find((radio) => radio.value === 'upload');
+    if (uploadRadio && !uploadRadio.checked) {
+      uploadRadio.checked = true;
+      this.updateTemplateMode();
+    }
+    const data = new FormData();
+    data.append('template', file);
+    this.setTemplateStatus('Analyzing uploaded template…');
+    try {
+      const response = await fetch('/api/templates/inspect', {
+        method: 'POST',
+        body: data,
+      });
+      const payload = await response.json();
+      if (!response.ok) {
+        throw new Error(payload.error || 'Failed to analyze template');
+      }
+      this.applyTemplateMetadata(payload.metadata, { label: file.name, source: 'upload' });
+      this.setTemplateStatus('Template analyzed. Settings updated.', 'success');
+    } catch (error) {
+      console.error('Failed to analyze uploaded template', error);
+      this.setTemplateStatus(error.message || 'Failed to analyze template', 'error');
+    }
+  }
+
+  applyTemplateMetadata(metadata, descriptor = {}) {
+    if (!metadata || typeof metadata !== 'object') return;
+    const trainingSelect = this.form.querySelector('#training_method');
+    const baseModelSelect = this.form.querySelector('#base_model');
+
+    if (metadata.training_method && trainingSelect) {
+      const option = Array.from(trainingSelect.options).find(
+        (item) => item.value === metadata.training_method
+      );
+      if (option) {
+        trainingSelect.value = metadata.training_method;
+      }
+    }
+
+    if (baseModelSelect) {
+      const modelValue = metadata.model_choice || metadata.resolved_base_model || metadata.base_model;
+      if (modelValue) {
+        const label = metadata.model_choice ? null : descriptor.label || modelValue;
+        this.ensureSelectOption(baseModelSelect, modelValue, label || modelValue);
+        baseModelSelect.value = modelValue;
+      }
+    }
+
+    const params = metadata.parameters || {};
+    this.applyFieldValue('learning_rate', params.learning_rate);
+    this.applyFieldValue('num_epochs', params.num_epochs);
+    this.applyFieldValue('max_steps', params.max_steps);
+    this.applyFieldValue('micro_batch_size', params.micro_batch_size);
+    this.applyFieldValue('gradient_accumulation_steps', params.gradient_accumulation_steps);
+    this.applyFieldValue('save_steps', params.save_steps);
+    this.applyFieldValue('logging_steps', params.logging_steps);
+    this.applyFieldValue('warmup_steps', params.warmup_steps);
+    this.applyFieldValue('chat_template', params.chat_template);
+    this.applyFieldValue('wandb_project', params.wandb_project);
+    this.applyFieldValue('validation_path', params.validation_path);
+    this.applyFieldValue('seed', params.seed);
+    this.applyBooleanField('sample_packing', params.sample_packing);
+    this.applyBooleanField('flash_attention', params.flash_attention);
+    this.applyBooleanField('bf16', params.bf16);
+  }
+
+  ensureSelectOption(select, value, label) {
+    if (!value) return;
+    let option = Array.from(select.options).find((item) => item.value === value);
+    if (!option) {
+      option = new Option(label || value, value);
+      option.dataset.templateInserted = 'true';
+      select.add(option);
+    }
+  }
+
+  applyFieldValue(name, value) {
+    if (value === undefined || value === null) return;
+    const field = this.form.querySelector(`[name="${name}"]`);
+    if (!field) return;
+    field.value = String(value);
+  }
+
+  applyBooleanField(name, value) {
+    if (value === undefined || value === null) return;
+    const field = this.form.querySelector(`input[name="${name}"][type="checkbox"]`);
+    if (!field) return;
+    field.checked = Boolean(value);
+  }
+
+  setTemplateStatus(message, state = 'info') {
+    if (!this.templateStatusEls.length) return;
+    this.templateStatusEls.forEach((el) => {
+      el.textContent = message || '';
+      el.dataset.state = state;
+    });
   }
 
   formatBytes(bytes) {

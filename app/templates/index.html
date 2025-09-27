@@ -14,6 +14,31 @@
       </div>
 
       <div class="field-group">
+        <label>Training template</label>
+        <div class="dataset-source-options">
+          <label><input type="radio" name="template_mode" value="existing" checked /> Use existing template</label>
+          <label><input type="radio" name="template_mode" value="upload" /> Upload template</label>
+        </div>
+        <small class="hint">Choose from Axolotl example configs or reuse previously uploaded YAML templates.</small>
+      </div>
+
+      <div class="field-group" data-template-existing>
+        <label for="template_choice">Template library</label>
+        <select id="template_choice" name="template_choice" data-empty-option="No templates found" disabled>
+          <option value="">Loading templates…</option>
+        </select>
+        <small class="hint" data-template-empty hidden>Upload a template to use it again later.</small>
+        <p class="field-status" data-template-status></p>
+      </div>
+
+      <div class="field-group" data-template-upload hidden>
+        <label for="template_file">Upload template</label>
+        <input type="file" id="template_file" name="template_file" accept=".yaml,.yml" />
+        <small class="hint">Upload an Axolotl training YAML to prefill the form and reuse it for fine-tuning.</small>
+        <p class="field-status" data-template-status></p>
+      </div>
+
+      <div class="field-group">
         <label for="training_method">Training method</label>
         <select id="training_method" name="training_method" required>
           {% for method in training_methods %}
@@ -75,9 +100,9 @@
           <label>chat_template <input type="text" name="chat_template" placeholder="axolotl" /></label>
           <label>W&B project <input type="text" name="wandb_project" placeholder="optional" /></label>
           <label>Validation path <input type="text" name="validation_path" placeholder="optional" /></label>
-          <label class="checkbox"><input type="checkbox" name="sample_packing" checked /> Sample packing</label>
-          <label class="checkbox"><input type="checkbox" name="flash_attention" checked /> Flash attention</label>
-          <label class="checkbox"><input type="checkbox" name="bf16" checked /> bf16</label>
+          <label class="checkbox"><input type="checkbox" name="sample_packing" data-boolean /> Sample packing</label>
+          <label class="checkbox"><input type="checkbox" name="flash_attention" data-boolean /> Flash attention</label>
+          <label class="checkbox"><input type="checkbox" name="bf16" data-boolean /> bf16</label>
           <label>Extra parameters <textarea name="extra_parameters" rows="3" placeholder='{"gradient_checkpointing": true}'></textarea></label>
         </div>
       </details>

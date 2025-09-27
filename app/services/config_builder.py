@@ -68,79 +68,104 @@ def build_config_name(base_model: str, training_method: str, config_folder: str)
 
 def build_training_config(
     *,
-    base_model: str,
-    training_method: str,
+    template_content: str,
     dataset_path: str,
     output_dir: str,
     params: dict[str, Any],
     config_folder: str,
+    config_base_model: str,
+    training_method: str,
 ) -> str:
-    config_name = build_config_name(base_model, training_method, config_folder)
+    config_name = build_config_name(config_base_model, training_method or "custom", config_folder)
     config_path = Path(config_folder) / config_name
 
-    method_defaults = DEFAULT_METHOD_PARAMETERS.get(training_method, {})
+    try:
+        config_data = yaml.safe_load(template_content) or {}
+    except yaml.YAMLError as exc:
+        raise ValueError(f"Invalid template YAML: {exc}") from exc
 
-    model_option = OPEN_SOURCE_MODELS.get(base_model)
-    if not model_option and params.get("model_choice_id"):
-        model_option = OPEN_SOURCE_MODELS.get(params["model_choice_id"])
+    if not isinstance(config_data, dict):
+        raise ValueError("Template must define a YAML mapping at the top level")
 
-    resolved_base_model = params.get("resolved_base_model")
-    if not resolved_base_model and model_option:
-        resolved_base_model = model_option.resolved_base_model
-    if not resolved_base_model:
-        resolved_base_model = base_model
+    if config_base_model:
+        config_data["base_model"] = config_base_model
+    config_data["output_dir"] = output_dir
 
-    config: dict[str, Any] = {
-        "base_model": resolved_base_model,
-        "datasets": [
-            {
-                "path": dataset_path,
-                "type": "chat_template",
-            }
-        ],
-        "output_dir": output_dir,
-        "chat_template": params.get("chat_template", "alpaca"),
-        "save_total_limit": params.get("save_total_limit", 3),
-        "val_set": params.get("validation_path") or None,
-        "warmup_steps": params.get("warmup_steps", 50),
-        "max_steps": params.get("max_steps"),
-        "num_epochs": params.get("num_epochs", 1),
-        "micro_batch_size": params.get("micro_batch_size", 1),
-        "gradient_accumulation_steps": params.get("gradient_accumulation_steps", 1),
-        "learning_rate": params.get("learning_rate", 2e-5),
-        "logging_steps": params.get("logging_steps", 10),
-        "save_strategy": "steps",
-        "save_steps": params.get("save_steps", 100),
-        "sample_packing": params.get("sample_packing", True),
-        "seed": params.get("seed", 42),
-        "flash_attention": params.get("flash_attention", True),
-        "wandb_project": params.get("wandb_project"),
+    datasets = config_data.get("datasets")
+    if isinstance(datasets, list) and datasets:
+        first = datasets[0]
+        if isinstance(first, dict):
+            first["path"] = dataset_path
+        else:
+            datasets[0] = {"path": dataset_path}
+    else:
+        config_data["datasets"] = [{"path": dataset_path}]
+
+    override_keys = {
+        "learning_rate",
+        "num_epochs",
+        "max_steps",
+        "micro_batch_size",
+        "gradient_accumulation_steps",
+        "save_steps",
+        "logging_steps",
+        "warmup_steps",
+        "chat_template",
+        "wandb_project",
+        "seed",
+        "sample_packing",
+        "flash_attention",
+        "bf16",
     }
 
-    if params.get("bf16", True):
-        config["bf16"] = True
+    for key in override_keys:
+        if key in params:
+            config_data[key] = params[key]
 
-    if params.get("push_to_hub"):
-        config["push_dataset_to_hub"] = params.get("push_to_hub")
-
-    if params.get("validation_path"):
-        config.setdefault("val_sets", []).append({
-            "path": params["validation_path"],
-            "type": "chat_template",
-        })
-
-    config.update(method_defaults)
-
-    if training_method in {"lora", "qlora"}:
-        config.setdefault("lora_target_modules", list(DEFAULT_LORA_TARGET_MODULES))
+    if "validation_path" in params:
+        value = params["validation_path"]
+        if value:
+            config_data["val_set"] = value
+        else:
+            config_data.pop("val_set", None)
 
     reference = params.get("model_reference_config")
-    if not reference and model_option:
-        reference = model_option.reference_config
+    if not reference:
+        model_option = OPEN_SOURCE_MODELS.get(params.get("model_choice_id"))
+        if model_option:
+            reference = model_option.reference_config
     if reference:
-        config["reference_config"] = reference
+        config_data["reference_config"] = reference
+
+    reserved_keys = {
+        "dataset_mode",
+        "dataset_selection",
+        "dataset_storage_name",
+        "model_choice_id",
+        "model_label",
+        "model_family",
+        "model_reference_config",
+        "resolved_base_model",
+        "template_mode",
+        "template_source",
+        "template_label",
+        "template_id",
+        "template_path",
+        "template_filename",
+        "template_download_url",
+        "template_base_model",
+        "detected_training_method",
+        "training_method",
+    }
+
+    for key, value in params.items():
+        if key in reserved_keys or key in override_keys or key == "validation_path":
+            continue
+        if value is None:
+            continue
+        config_data[key] = value
 
     with config_path.open("w", encoding="utf-8") as fp:
-        yaml.safe_dump({k: v for k, v in config.items() if v is not None}, fp, sort_keys=False)
+        yaml.safe_dump(config_data, fp, sort_keys=False)
 
     return str(config_path)

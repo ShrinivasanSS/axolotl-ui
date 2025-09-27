@@ -15,6 +15,11 @@ from ..extensions import db
 from ..models import TrainingJob, User
 from .config_builder import build_training_config
 from .constants import OPEN_SOURCE_MODELS
+from .templates import (
+    inspect_template_text,
+    load_template_content,
+    store_uploaded_template,
+)
 
 
 _threads: dict[int, threading.Thread] = {}
@@ -109,9 +114,46 @@ def create_training_job(
     training_method: str,
     dataset_file: Optional[FileStorage],
     params: dict[str, Any],
+    template_mode: str,
+    template_id: Optional[str] = None,
+    template_file: Optional[FileStorage] = None,
     existing_dataset: Optional[str] = None,
 ) -> TrainingJob:
     params = dict(params)
+
+    params.setdefault("template_mode", template_mode)
+    params.setdefault("training_method", training_method)
+
+    if template_mode == "upload":
+        if not template_file or not template_file.filename:
+            raise ValueError("A template file is required.")
+        descriptor, template_content, template_metadata = store_uploaded_template(template_file)
+    elif template_mode == "existing":
+        if not template_id:
+            raise ValueError("Select a template from the library or upload a new one.")
+        descriptor, template_content = load_template_content(template_id)
+        template_metadata = inspect_template_text(template_content)
+    else:
+        raise ValueError("Invalid template mode.")
+
+    params.setdefault("template_id", descriptor.id)
+    params.setdefault("template_label", descriptor.label)
+    params.setdefault("template_source", descriptor.source)
+    params.setdefault("template_path", descriptor.path)
+    params.setdefault("template_filename", descriptor.filename)
+    if descriptor.download_url:
+        params.setdefault("template_download_url", descriptor.download_url)
+
+    if template_metadata.get("reference_config") and not params.get("model_reference_config"):
+        params["model_reference_config"] = template_metadata["reference_config"]
+    if template_metadata.get("model_choice") and not params.get("model_choice_id"):
+        params["model_choice_id"] = template_metadata["model_choice"]
+    if template_metadata.get("resolved_base_model") and not params.get("resolved_base_model"):
+        params["resolved_base_model"] = template_metadata["resolved_base_model"]
+    if template_metadata.get("base_model") and not params.get("template_base_model"):
+        params["template_base_model"] = template_metadata["base_model"]
+    if template_metadata.get("training_method") and not params.get("detected_training_method"):
+        params["detected_training_method"] = template_metadata["training_method"]
 
     dataset_was_uploaded = False
 
@@ -151,12 +193,13 @@ def create_training_job(
     output_dir = determine_output_dir(job_slug)
 
     config_path = build_training_config(
-        base_model=base_model,
-        training_method=training_method,
+        template_content=template_content,
         dataset_path=dataset_path,
         output_dir=output_dir,
         params=params,
         config_folder=current_app.config["CONFIG_FOLDER"],
+        config_base_model=resolved_base_model,
+        training_method=training_method,
     )
 
     docker_command = build_docker_command(config_path)
@@ -181,6 +224,7 @@ def create_training_job(
         job.append_event(f"Dataset stored at {dataset_path}")
     else:
         job.append_event(f"Reusing dataset at {dataset_path}")
+    job.append_event(f"Using template {descriptor.label} ({descriptor.source})")
     job.append_event(f"Base model resolved to {resolved_base_model}")
     job.append_event(f"Output will be written to {output_dir}")
     db.session.commit()
