@@ -268,8 +268,10 @@ def _run_training_job(app, job_id: int) -> None:
         job.append_event(f"Running command: {command}")
         db.session.commit()
 
+    log_path_str = str(log_path)
+
     try:
-        with open(job.log_path, "a", encoding="utf-8") as log_file:
+        with open(log_path_str, "a", encoding="utf-8") as log_file:
             process = subprocess.Popen(
                 command,
                 shell=True,
