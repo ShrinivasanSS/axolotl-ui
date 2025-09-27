@@ -14,6 +14,10 @@
     {% set dataset_name = job.parameters.get('dataset_storage_name') if job.parameters else job.dataset_path %}
     {% set resolved_model = job.parameters.get('resolved_base_model') if job.parameters else job.base_model %}
     {% set reference_config = job.parameters.get('model_reference_config') if job.parameters else None %}
+    {% set template_label = job.parameters.get('template_label') if job.parameters else None %}
+    {% set template_source = job.parameters.get('template_source') if job.parameters else None %}
+    {% set template_download = job.parameters.get('template_download_url') if job.parameters else None %}
+    {% set template_path = job.parameters.get('template_path') if job.parameters else None %}
     <dl>
       <div><dt>Model</dt><dd>{{ model_label or resolved_model }}</dd></div>
       <div><dt>Base model ID</dt><dd><code>{{ resolved_model }}</code></dd></div>
@@ -24,6 +28,22 @@
       <div><dt>Dataset file</dt><dd>{{ dataset_name }}{% if dataset_mode == 'existing' %}<span class="tag">Reused</span>{% endif %}</dd></div>
       <div><dt>Dataset path</dt><dd><code>{{ job.dataset_path }}</code></dd></div>
       <div><dt>Config</dt><dd><code>{{ job.config_path }}</code></dd></div>
+      {% if template_label %}
+        <div>
+          <dt>Template</dt>
+          <dd>
+            {% if template_download %}
+              <a href="{{ template_download }}" target="_blank" rel="noopener">{{ template_label }}</a>
+            {% else %}
+              {{ template_label }}
+            {% endif %}
+            {% if template_source %}<span class="tag">{{ template_source|capitalize }}</span>{% endif %}
+          </dd>
+        </div>
+        {% if template_path %}
+          <div><dt>Template reference</dt><dd><code>{{ template_path }}</code></dd></div>
+        {% endif %}
+      {% endif %}
       {% if reference_config %}
         <div><dt>Reference config</dt><dd><a href="{{ reference_config }}" target="_blank" rel="noopener">{{ reference_config }}</a></dd></div>
       {% endif %}

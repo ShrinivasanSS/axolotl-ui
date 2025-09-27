@@ -22,6 +22,12 @@ from .services.constants import (
     group_models_by_family,
 )
 from .services.training import create_training_job, list_available_datasets
+from .services.templates import (
+    inspect_template_file,
+    inspect_template_text,
+    load_template_content,
+    summarize_templates,
+)
 
 
 main_bp = Blueprint("main", __name__)
@@ -50,15 +56,32 @@ def submit_training() -> Response:
 
     training_method = form.get("training_method")
     base_model = form.get("base_model")
+    template_mode = form.get("template_mode", "existing")
+    template_choice = form.get("template_choice") if template_mode == "existing" else None
+    template_file = files.get("template_file") if template_mode == "upload" else None
     model_option = OPEN_SOURCE_MODELS.get(base_model)
 
     if training_method not in {method.id for method in TRAINING_METHODS}:
         return jsonify({"error": "Invalid training method"}), 400
 
-    if not model_option:
-        return jsonify({"error": "Invalid base model"}), 400
+    if not base_model:
+        return jsonify({"error": "Select a base model or use a template that defines one."}), 400
 
-    default_suffix = model_option.default_suffix or model_option.id.split("/")[-1]
+    if template_mode not in {"existing", "upload"}:
+        return jsonify({"error": "Invalid template mode"}), 400
+
+    if template_mode == "existing" and not template_choice:
+        return jsonify({"error": "Select a template from the library or upload a new one."}), 400
+
+    if template_mode == "upload" and (not template_file or not template_file.filename):
+        return jsonify({"error": "Choose a template YAML file to upload."}), 400
+
+    if model_option:
+        default_suffix = model_option.default_suffix or model_option.id.split("/")[-1]
+    else:
+        fallback = base_model.split("/")[-1] if base_model else "run"
+        default_suffix = fallback or "run"
+
     display_name = form.get("display_name") or f"{default_suffix}-{training_method}"
 
     dataset_mode = form.get("dataset_mode", "upload")
@@ -69,17 +92,26 @@ def submit_training() -> Response:
         return jsonify({"error": "Select a stored dataset or upload a new file."}), 400
 
     params = collect_params(form)
-    params.update(
-        {
-            "model_choice_id": model_option.id,
-            "model_label": model_option.label,
-            "model_family": model_option.family_label,
-            "model_reference_config": model_option.reference_config,
-            "resolved_base_model": model_option.resolved_base_model,
-            "dataset_mode": dataset_mode,
-            "dataset_selection": existing_dataset,
-        }
-    )
+    params["dataset_mode"] = dataset_mode
+    params["template_mode"] = template_mode
+    params["training_method"] = training_method
+
+    if model_option:
+        params.update(
+            {
+                "model_choice_id": model_option.id,
+                "model_label": model_option.label,
+                "model_family": model_option.family_label,
+                "model_reference_config": model_option.reference_config,
+                "resolved_base_model": model_option.resolved_base_model,
+            }
+        )
+    else:
+        params.setdefault("resolved_base_model", base_model)
+        params.setdefault("model_label", base_model)
+        params.setdefault("model_choice_id", base_model)
+    if existing_dataset:
+        params["dataset_selection"] = existing_dataset
 
     user = User.query.filter_by(email=current_app.config["DEFAULT_SUPERUSER_EMAIL"]).first()
     if not user:
@@ -91,11 +123,14 @@ def submit_training() -> Response:
         job = create_training_job(
             user=user,
             display_name=display_name,
-            base_model=model_option.id,
+            base_model=model_option.id if model_option else base_model,
             training_method=training_method,
             dataset_file=dataset_file,
             existing_dataset=existing_dataset,
             params=params,
+            template_mode=template_mode,
+            template_id=template_choice,
+            template_file=template_file,
         )
     except ValueError as exc:
         return jsonify({"error": str(exc)}), 400
@@ -117,26 +152,45 @@ def collect_params(form: Any) -> dict[str, Any]:
     }
     for field, caster in numeric_fields.items():
         value = form.get(field)
-        if value:
+        if value not in {None, ""}:
             try:
                 params[field] = caster(value)
             except ValueError:
                 continue
 
-    params["chat_template"] = form.get("chat_template") or "axolotl"
-    params["wandb_project"] = form.get("wandb_project") or None
-    params["validation_path"] = form.get("validation_path") or None
-    params["sample_packing"] = form.get("sample_packing") == "on"
-    params["flash_attention"] = form.get("flash_attention") != "off"
-    params["bf16"] = form.get("bf16") != "off"
-    params["seed"] = int(form.get("seed") or 42)
+    chat_template = form.get("chat_template")
+    if chat_template:
+        params["chat_template"] = chat_template
+
+    wandb_project = form.get("wandb_project")
+    if wandb_project:
+        params["wandb_project"] = wandb_project
+
+    validation_path = form.get("validation_path")
+    if validation_path:
+        params["validation_path"] = validation_path
+
+    for field in ("sample_packing", "flash_attention", "bf16"):
+        raw_value = form.get(field)
+        if raw_value in {"true", "false"}:
+            params[field] = raw_value == "true"
+
+    seed_value = form.get("seed")
+    if seed_value not in {None, ""}:
+        try:
+            params["seed"] = int(seed_value)
+        except ValueError:
+            pass
 
     custom_parameters = form.get("extra_parameters")
     if custom_parameters:
         try:
-            params.update(json.loads(custom_parameters))
+            extra = json.loads(custom_parameters)
         except json.JSONDecodeError:
             pass
+        else:
+            if isinstance(extra, dict):
+                params.update(extra)
 
     return {k: v for k, v in params.items() if v is not None}
 
@@ -211,6 +265,47 @@ def datasets() -> Response:
     return jsonify(list_available_datasets())
 
 
+@api_bp.route("/templates")
+def templates() -> Response:
+    return jsonify(summarize_templates())
+
+
+@api_bp.route("/templates/info")
+def template_info() -> Response:
+    identifier = request.args.get("id")
+    if not identifier:
+        return jsonify({"error": "Template id is required."}), 400
+    try:
+        descriptor, content = load_template_content(identifier)
+        metadata = inspect_template_text(content)
+    except ValueError as exc:
+        return jsonify({"error": str(exc)}), 400
+    return jsonify(
+        {
+            "id": descriptor.id,
+            "label": descriptor.label,
+            "source": descriptor.source,
+            "group": descriptor.group,
+            "filename": descriptor.filename,
+            "path": descriptor.path,
+            "download_url": descriptor.download_url,
+            "metadata": metadata,
+        }
+    )
+
+
+@api_bp.route("/templates/inspect", methods=["POST"])
+def inspect_template() -> Response:
+    file = request.files.get("template")
+    if not file or not file.filename:
+        return jsonify({"error": "Upload a template YAML file."}), 400
+    try:
+        metadata = inspect_template_file(file)
+    except ValueError as exc:
+        return jsonify({"error": str(exc)}), 400
+    return jsonify({"metadata": metadata})
+
+
 def job_to_dict(job: TrainingJob) -> dict[str, Any]:
     params = job.parameters or {}
     model_label = params.get("model_label")
@@ -237,4 +332,9 @@ def job_to_dict(job: TrainingJob) -> dict[str, Any]:
         "resolved_base_model": resolved_base_model,
         "model_reference_config": params.get("model_reference_config"),
         "model_family": params.get("model_family"),
+        "template_id": params.get("template_id"),
+        "template_label": params.get("template_label"),
+        "template_source": params.get("template_source"),
+        "template_path": params.get("template_path"),
+        "template_download_url": params.get("template_download_url"),
     }

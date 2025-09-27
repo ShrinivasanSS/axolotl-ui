@@ -22,6 +22,10 @@ class Config:
         "CONFIG_FOLDER",
         os.path.join(TRAINING_ROOT, "configs")
     )
+    TEMPLATE_FOLDER = os.environ.get(
+        "TEMPLATE_FOLDER",
+        os.path.join(TRAINING_ROOT, "templates"),
+    )
     LOG_FOLDER = os.environ.get(
         "LOG_FOLDER",
         os.path.join(TRAINING_ROOT, "logs")
