@@ -236,7 +236,7 @@ def create_training_job(
 def build_docker_command(config_path: str) -> str:
     container = current_app.config["DOCKER_CONTAINER_NAME"]
     return (
-        f"docker exec -it {shlex.quote(container)} "
+        f"docker exec {shlex.quote(container)} "
         "axolotl train "
         f"{shlex.quote(config_path)}"
     )

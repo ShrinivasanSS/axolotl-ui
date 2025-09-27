@@ -18,11 +18,19 @@ services:
       CONFIG_FOLDER: /workspace/axolotl-ui/data/configs
       LOG_FOLDER: /workspace/axolotl-ui/data/logs
       DATABASE_URL: sqlite:////app/instance/app.db
+      # Point Docker CLI at the socket you just mounted
+      DOCKER_HOST: unix:///var/run/docker.sock
+      # If using windows containers, use this.
+      # DOCKER_HOST: npipe:////./pipe/docker_engine
     volumes:
       - ./:/app/
       - ../workspace:/workspace/
       - ../workspace/axolotl-ui/data:/workspace/axolotl-ui/data
       - ./instance:/app/instance
+      # 1. Share the host’s Docker UNIX socket
+      - /var/run/docker.sock:/var/run/docker.sock
+      # 2. If you are using windows containers, use this.
+      #- \\.\pipe\docker_engine:\\.\pipe\docker_engine
     restart: unless-stopped
 
   axolotl:

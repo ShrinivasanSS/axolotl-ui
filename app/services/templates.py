@@ -174,7 +174,8 @@ def list_remote_templates() -> list[TemplateDescriptor]:
 
 
 def list_all_templates() -> list[TemplateDescriptor]:
-    templates = list_remote_templates() + list_local_templates()
+    # Uncomment this line only if you want to list all examples from the axolotl templates.
+    templates = list_local_templates() # + list_remote_templates() 
     templates.sort(key=lambda item: (item.group or "", item.label.lower()))
     return templates
 
